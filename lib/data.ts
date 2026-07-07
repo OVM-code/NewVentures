@@ -32,8 +32,13 @@ export type Signup = {
   utm_campaign: string | null;
   utm_content: string | null;
   referrer: string | null;
+  intent: string | null;
+  price_expectation: string | null;
   created_at: string;
 };
+
+export const INTENT_VALUES = ["yes_now", "yes", "maybe", "no"] as const;
+export type Intent = (typeof INTENT_VALUES)[number];
 
 function slugify(input: string): string {
   return input
@@ -209,18 +214,20 @@ export async function recordSignup(input: {
   utmCampaign?: string | null;
   utmContent?: string | null;
   referrer?: string | null;
-}): Promise<{ ok: true } | { ok: false; reason: "duplicate" }> {
+}): Promise<{ ok: true; id: string } | { ok: false; reason: "duplicate"; id: string | null }> {
   await ensureSchema();
+  const id = nanoid();
+  const email = input.email.toLowerCase().trim();
   try {
     await db.execute({
       sql: `INSERT INTO signups (id, idea_id, variant_id, name, email, utm_source, utm_medium, utm_campaign, utm_content, referrer)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
-        nanoid(),
+        id,
         input.ideaId,
         input.variantId,
         input.name || null,
-        input.email.toLowerCase().trim(),
+        email,
         input.utmSource || null,
         input.utmMedium || null,
         input.utmCampaign || null,
@@ -228,14 +235,45 @@ export async function recordSignup(input: {
         input.referrer || null,
       ],
     });
-    return { ok: true };
+    return { ok: true, id };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (/UNIQUE constraint failed/i.test(message)) {
-      return { ok: false, reason: "duplicate" };
+      // Return the existing signup's id so a repeat visitor can still
+      // answer (or revise) the intent question.
+      const existing = await db.execute({
+        sql: "SELECT id FROM signups WHERE idea_id = ? AND email = ?",
+        args: [input.ideaId, email],
+      });
+      return { ok: false, reason: "duplicate", id: (existing.rows[0]?.id as string) || null };
     }
     throw err;
   }
+}
+
+export async function updateSignupIntent(input: {
+  signupId: string;
+  intent?: Intent;
+  priceExpectation?: string;
+}): Promise<boolean> {
+  await ensureSchema();
+  const sets: string[] = [];
+  const args: string[] = [];
+  if (input.intent) {
+    sets.push("intent = ?");
+    args.push(input.intent);
+  }
+  if (input.priceExpectation) {
+    sets.push("price_expectation = ?");
+    args.push(input.priceExpectation);
+  }
+  if (sets.length === 0) return false;
+  args.push(input.signupId);
+  const result = await db.execute({
+    sql: `UPDATE signups SET ${sets.join(", ")} WHERE id = ?`,
+    args,
+  });
+  return result.rowsAffected > 0;
 }
 
 export async function listSignups(ideaId: string): Promise<Signup[]> {

@@ -43,8 +43,8 @@ export async function POST(request: NextRequest) {
   });
 
   if (!result.ok) {
-    return NextResponse.json({ ok: true, alreadySignedUp: true });
+    return NextResponse.json({ ok: true, alreadySignedUp: true, signupId: result.id });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, signupId: result.id });
 }

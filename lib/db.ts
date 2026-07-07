@@ -63,9 +63,25 @@ export async function ensureSchema() {
       utm_campaign TEXT,
       utm_content TEXT,
       referrer TEXT,
+      intent TEXT,
+      price_expectation TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // Migrate databases created before the intent columns existed. SQLite has no
+  // ADD COLUMN IF NOT EXISTS, so tolerate only the duplicate-column error.
+  for (const sql of [
+    "ALTER TABLE signups ADD COLUMN intent TEXT",
+    "ALTER TABLE signups ADD COLUMN price_expectation TEXT",
+  ]) {
+    try {
+      await db.execute(sql);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/duplicate column/i.test(message)) throw err;
+    }
+  }
 
   await db.execute(`
     CREATE UNIQUE INDEX IF NOT EXISTS signups_idea_email_idx ON signups(idea_id, email)

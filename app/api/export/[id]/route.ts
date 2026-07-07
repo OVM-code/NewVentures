@@ -41,6 +41,8 @@ export async function GET(
     "utm_campaign",
     "utm_content",
     "referrer",
+    "intent",
+    "price_expectation",
     "created_at",
   ];
   const rows = signups.map((s) =>
@@ -53,6 +55,8 @@ export async function GET(
       s.utm_campaign || "",
       s.utm_content || "",
       s.referrer || "",
+      s.intent || "",
+      s.price_expectation || "",
       s.created_at,
     ]
       .map((v) => csvEscape(String(v)))

@@ -7,12 +7,28 @@ import {
   listSignups,
 } from "@/lib/data";
 import ConfirmSubmit from "../confirm-submit";
+import LinkBuilder from "../link-builder";
+import { compareToLeader } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
 function pct(n: number) {
   return `${(n * 100).toFixed(1)}%`;
 }
+
+const INTENT_LABELS: Record<string, string> = {
+  yes_now: "Take my money",
+  yes: "Yes, probably",
+  maybe: "Maybe",
+  no: "Just curious",
+};
+
+const VERDICT_STYLES: Record<string, string> = {
+  significant: "text-emerald-400",
+  promising: "text-amber-300",
+  inconclusive: "text-neutral-400",
+  insufficient: "text-neutral-500",
+};
 
 export default async function IdeaDetail({
   params,
@@ -31,6 +47,20 @@ export default async function IdeaDetail({
 
   const totalVisits = variantStats.reduce((s, v) => s + v.visits, 0);
   const totalSignups = variantStats.reduce((s, v) => s + v.signups, 0);
+
+  // Leader = highest observed conversion rate (with any traffic); the others
+  // are then tested against it for statistical significance.
+  const leader =
+    variantStats.length > 1
+      ? variantStats.reduce((best, v) => (v.conversionRate > best.conversionRate ? v : best))
+      : null;
+
+  const intentCounts = new Map<string, number>();
+  for (const s of signups) {
+    if (s.intent) intentCounts.set(s.intent, (intentCounts.get(s.intent) || 0) + 1);
+  }
+  const answered = [...intentCounts.values()].reduce((a, b) => a + b, 0);
+  const wouldPay = (intentCounts.get("yes_now") || 0) + (intentCounts.get("yes") || 0);
 
   return (
     <div className="space-y-10">
@@ -91,7 +121,13 @@ export default async function IdeaDetail({
           copy that resonates most.
         </p>
         <div className="grid gap-3 mb-5">
-          {variantStats.map(({ variant, visits, signups: s, conversionRate }) => (
+          {variantStats.map(({ variant, visits, signups: s, conversionRate }) => {
+            const isLeader = leader?.variant.id === variant.id;
+            const verdict =
+              leader && !isLeader
+                ? compareToLeader(leader.signups, leader.visits, s, visits)
+                : null;
+            return (
             <div
               key={variant.id}
               className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex items-start justify-between gap-4"
@@ -99,12 +135,22 @@ export default async function IdeaDetail({
               <div>
                 <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">
                   Variant {variant.label} &middot; weight {variant.weight}
+                  {isLeader && (
+                    <span className="ml-2 text-emerald-400 normal-case tracking-normal">
+                      current leader
+                    </span>
+                  )}
                 </div>
                 <div className="font-medium">{variant.headline}</div>
                 {variant.subcopy && (
                   <div className="text-sm text-neutral-400 mt-1">{variant.subcopy}</div>
                 )}
                 <div className="text-xs text-neutral-500 mt-1">CTA: {variant.cta_text}</div>
+                {verdict && (
+                  <div className={`text-xs mt-2 ${VERDICT_STYLES[verdict.tone]}`}>
+                    vs leader: {verdict.label}
+                  </div>
+                )}
               </div>
               <div className="text-right shrink-0">
                 <div className="font-semibold">{pct(conversionRate)}</div>
@@ -124,7 +170,8 @@ export default async function IdeaDetail({
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <form
@@ -186,10 +233,18 @@ export default async function IdeaDetail({
       </section>
 
       <section>
+        <h2 className="text-lg font-semibold mb-1">Channel links</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Copy a pre-tagged link per channel you&apos;re testing — signups and visits are
+          attributed automatically, so the table below stays trustworthy.
+        </p>
+        <LinkBuilder slug={idea.slug} />
+      </section>
+
+      <section>
         <h2 className="text-lg font-semibold mb-1">Marketing channel performance</h2>
         <p className="text-sm text-neutral-500 mb-4">
-          Share <code className="text-neutral-400">{`/w/${idea.slug}?utm_source=twitter&utm_medium=post&utm_campaign=launch`}</code>{" "}
-          style links per channel to compare where interested people actually come from.
+          Where interested people actually come from, by tagged link.
         </p>
         {channelStats.length === 0 ? (
           <p className="text-neutral-500 text-sm">No tagged traffic yet.</p>
@@ -224,6 +279,37 @@ export default async function IdeaDetail({
       </section>
 
       <section>
+        <h2 className="text-lg font-semibold mb-1">Purchase intent</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Answers to &ldquo;would you pay for this?&rdquo; asked right after signup. A long
+          waitlist of &ldquo;just curious&rdquo; is a very different signal from a short list
+          that wants to pay.
+        </p>
+        {answered === 0 ? (
+          <p className="text-neutral-500 text-sm">No answers yet.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5">
+              <div className="text-2xl font-semibold">{pct(wouldPay / answered)}</div>
+              <div className="text-sm text-neutral-500">
+                would pay ({wouldPay}/{answered} answered, {signups.length - answered} skipped)
+              </div>
+            </div>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex flex-wrap items-center gap-2">
+              {Object.entries(INTENT_LABELS).map(([value, label]) => (
+                <span
+                  key={value}
+                  className="text-xs px-2.5 py-1 rounded-full bg-neutral-800 border border-neutral-700"
+                >
+                  {label}: {intentCounts.get(value) || 0}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section>
         <h2 className="text-lg font-semibold mb-4">Signups ({signups.length})</h2>
         {signups.length === 0 ? (
           <p className="text-neutral-500 text-sm">No signups yet.</p>
@@ -235,6 +321,8 @@ export default async function IdeaDetail({
                   <th className="text-left px-4 py-2">Email</th>
                   <th className="text-left px-4 py-2">Name</th>
                   <th className="text-left px-4 py-2">Source</th>
+                  <th className="text-left px-4 py-2">Would pay?</th>
+                  <th className="text-left px-4 py-2">Price expectation</th>
                   <th className="text-left px-4 py-2">When</th>
                 </tr>
               </thead>
@@ -244,6 +332,8 @@ export default async function IdeaDetail({
                     <td className="px-4 py-2">{s.email}</td>
                     <td className="px-4 py-2">{s.name || "—"}</td>
                     <td className="px-4 py-2">{s.utm_source || "—"}</td>
+                    <td className="px-4 py-2">{s.intent ? INTENT_LABELS[s.intent] || s.intent : "—"}</td>
+                    <td className="px-4 py-2">{s.price_expectation || "—"}</td>
                     <td className="px-4 py-2 text-neutral-400">{s.created_at}</td>
                   </tr>
                 ))}

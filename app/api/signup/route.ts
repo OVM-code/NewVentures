@@ -7,9 +7,16 @@ export async function POST(request: NextRequest) {
   const variantId = String(body.variantId || "");
   const email = String(body.email || "").trim();
   const name = body.name ? String(body.name).trim() : null;
+  const company = String(body.company || "").trim();
 
   if (!slug || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "valid email required" }, { status: 400 });
+  }
+
+  // Honeypot: real visitors never see or fill this field, so a non-empty value
+  // means a bot. Pretend success without recording anything.
+  if (company) {
+    return NextResponse.json({ ok: true });
   }
 
   const idea = await getIdeaBySlug(slug);

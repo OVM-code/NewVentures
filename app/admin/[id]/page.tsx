@@ -6,6 +6,7 @@ import {
   getChannelStats,
   listSignups,
 } from "@/lib/data";
+import ConfirmSubmit from "../confirm-submit";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,12 @@ export default async function IdeaDetail({
           </div>
         </div>
         <form action={`/api/ideas/${idea.id}/delete`} method="POST">
-          <button className="text-sm text-red-400 hover:text-red-300">Delete idea</button>
+          <ConfirmSubmit
+            message={`Delete "${idea.name}" and all its signups? This can't be undone.`}
+            className="text-sm text-red-400 hover:text-red-300"
+          >
+            Delete idea
+          </ConfirmSubmit>
         </form>
       </div>
 
@@ -108,7 +114,12 @@ export default async function IdeaDetail({
                 {variantStats.length > 1 && (
                   <form action={`/api/variants/${variant.id}/delete`} method="POST" className="mt-2">
                     <input type="hidden" name="ideaId" value={idea.id} />
-                    <button className="text-xs text-red-400 hover:text-red-300">Delete</button>
+                    <ConfirmSubmit
+                      message={`Delete variant "${variant.label}" and its recorded visits/signups?`}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Delete
+                    </ConfirmSubmit>
                   </form>
                 )}
               </div>

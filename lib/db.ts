@@ -70,4 +70,8 @@ export async function ensureSchema() {
   await db.execute(`
     CREATE UNIQUE INDEX IF NOT EXISTS signups_idea_email_idx ON signups(idea_id, email)
   `);
+  await db.execute(`CREATE INDEX IF NOT EXISTS variants_idea_idx ON variants(idea_id)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS visits_idea_idx ON visits(idea_id)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS visits_variant_idx ON visits(variant_id)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS signups_variant_idx ON signups(variant_id)`);
 }

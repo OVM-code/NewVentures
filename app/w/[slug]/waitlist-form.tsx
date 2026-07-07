@@ -34,6 +34,7 @@ export default function WaitlistForm({
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [company, setCompany] = useState(""); // honeypot; real users never see or fill this
 
   useEffect(() => {
     const utm = getUtmParams();
@@ -62,6 +63,7 @@ export default function WaitlistForm({
           variantId: assignment?.variantId,
           name,
           email,
+          company,
           ...utm,
         }),
       });
@@ -93,6 +95,16 @@ export default function WaitlistForm({
         {subcopy && <p className="text-neutral-400 mt-3">{subcopy}</p>}
       </div>
       <form onSubmit={handleSubmit} className="space-y-3 text-left">
+        <input
+          type="text"
+          name="company"
+          value={company}
+          onChange={(e) => setCompany(e.target.value)}
+          tabIndex={-1}
+          autoComplete="off"
+          aria-hidden="true"
+          className="absolute -left-[9999px] w-px h-px overflow-hidden"
+        />
         <input
           type="text"
           placeholder="Name (optional)"

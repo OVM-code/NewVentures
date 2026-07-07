@@ -3,6 +3,11 @@ import { getIdeaById, listSignups, listVariants } from "@/lib/data";
 import { isValidSession, SESSION_COOKIE_NAME } from "@/lib/auth";
 
 function csvEscape(value: string): string {
+  // Prefix a leading =, +, -, @, tab, or CR with a single quote so spreadsheet
+  // apps (Excel/Sheets) don't interpret the cell as a formula (CSV injection).
+  if (/^[=+\-@\t\r]/.test(value)) {
+    value = `'${value}`;
+  }
   if (/[",\n]/.test(value)) {
     return `"${value.replace(/"/g, '""')}"`;
   }

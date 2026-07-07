@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkPassword, createSessionCookie } from "@/lib/auth";
 
+// Only allow same-site relative paths, never an absolute/protocol-relative URL,
+// to prevent this redirect target from being used for open-redirect phishing.
+function safeNextPath(next: string): string {
+  if (next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")) {
+    return next;
+  }
+  return "/admin";
+}
+
 export async function POST(request: NextRequest) {
   const form = await request.formData();
   const password = String(form.get("password") || "");
-  const next = String(form.get("next") || "/admin");
+  const next = safeNextPath(String(form.get("next") || "/admin"));
 
   if (!checkPassword(password)) {
     const url = new URL("/login", request.url);

@@ -68,20 +68,23 @@ export async function createIdea(input: {
   const baseSlug = slugify(input.slug || input.name);
   let slug = baseSlug;
   let attempt = 0;
-  while (true) {
-    const existing = await db.execute({
-      sql: "SELECT id FROM ideas WHERE slug = ?",
-      args: [slug],
-    });
-    if (existing.rows.length === 0) break;
-    attempt += 1;
-    slug = `${baseSlug}-${attempt + 1}`;
-  }
 
-  await db.execute({
-    sql: "INSERT INTO ideas (id, slug, name, pitch, description) VALUES (?, ?, ?, ?, ?)",
-    args: [id, slug, input.name, input.pitch, input.description || null],
-  });
+  // Retry on the actual unique-constraint violation rather than check-then-insert,
+  // which would lose a race between two concurrent creates for the same slug.
+  while (true) {
+    try {
+      await db.execute({
+        sql: "INSERT INTO ideas (id, slug, name, pitch, description) VALUES (?, ?, ?, ?, ?)",
+        args: [id, slug, input.name, input.pitch, input.description || null],
+      });
+      break;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/UNIQUE constraint failed/i.test(message) || attempt >= 20) throw err;
+      attempt += 1;
+      slug = `${baseSlug}-${attempt + 1}`;
+    }
+  }
 
   await db.execute({
     sql: `INSERT INTO variants (id, idea_id, label, headline, subcopy, cta_text, weight)
@@ -108,6 +111,12 @@ export async function getIdeaBySlug(slug: string): Promise<Idea | null> {
 
 export async function deleteIdea(id: string): Promise<void> {
   await ensureSchema();
+  // SQLite/libsql don't enforce ON DELETE CASCADE unless "PRAGMA foreign_keys = ON"
+  // is set per-connection, which isn't guaranteed across a serverless HTTP client
+  // (e.g. Turso). Delete children explicitly so no rows are orphaned.
+  await db.execute({ sql: "DELETE FROM signups WHERE idea_id = ?", args: [id] });
+  await db.execute({ sql: "DELETE FROM visits WHERE idea_id = ?", args: [id] });
+  await db.execute({ sql: "DELETE FROM variants WHERE idea_id = ?", args: [id] });
   await db.execute({ sql: "DELETE FROM ideas WHERE id = ?", args: [id] });
 }
 
@@ -149,6 +158,8 @@ export async function createVariant(input: {
 
 export async function deleteVariant(id: string): Promise<void> {
   await ensureSchema();
+  await db.execute({ sql: "DELETE FROM signups WHERE variant_id = ?", args: [id] });
+  await db.execute({ sql: "DELETE FROM visits WHERE variant_id = ?", args: [id] });
   await db.execute({ sql: "DELETE FROM variants WHERE id = ?", args: [id] });
 }
 
@@ -218,8 +229,12 @@ export async function recordSignup(input: {
       ],
     });
     return { ok: true };
-  } catch {
-    return { ok: false, reason: "duplicate" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint failed/i.test(message)) {
+      return { ok: false, reason: "duplicate" };
+    }
+    throw err;
   }
 }
 

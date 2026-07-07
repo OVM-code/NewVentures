@@ -1,0 +1,25 @@
+name: Check
+
+# Runs the full verification from AGENTS.md: lint + typecheck + build + smoke.
+# The smoke test boots the built app on a throwaway SQLite file and verifies
+# the maintainer contract (auth boundaries, sticky A/B assignment, signup
+# dedupe, CSV export). No secrets needed — it never touches production Turso.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
